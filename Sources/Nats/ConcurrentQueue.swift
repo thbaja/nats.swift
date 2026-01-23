@@ -28,4 +28,12 @@ internal final class ConcurrentQueue<T: Sendable>: Sendable {
             return array.removeFirst()
         }
     }
+
+    func drain() -> [T] {
+        elements.withLockedValue { array in
+            let all = array
+            array.removeAll()
+            return all
+        }
+    }
 }

@@ -33,6 +33,10 @@ internal final class RttCommand: Sendable {
         promise?.succeed(rtt)
     }
 
+    func cancel() {
+        promise?.fail(NatsError.ClientError.cancelled)
+    }
+
     func getRoundTripTime() async throws -> TimeInterval {
         try await promise?.futureResult.get() ?? 0
     }

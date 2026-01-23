@@ -774,6 +774,11 @@ final class ConnectionHandler: ChannelInboundHandler, Sendable {
         self.reconnectTask?.cancel()
         try await self.reconnectTask?.value
 
+        // Cancel all pending ping commands to avoid leaked promises
+        for rttCommand in self.pingQueue.drain() {
+            rttCommand.cancel()
+        }
+
         guard let eventLoop = self.channel?.eventLoop else {
             self.state.withLockedValue { $0 = .closed }
             self.pingTask?.cancel()
@@ -800,12 +805,21 @@ final class ConnectionHandler: ChannelInboundHandler, Sendable {
 
     private func disconnect() async throws {
         self.pingTask?.cancel()
+        // Cancel all pending ping commands to avoid leaked promises
+        for rttCommand in self.pingQueue.drain() {
+            rttCommand.cancel()
+        }
         try await self.channel?.close().get()
     }
 
     func suspend() async throws {
         self.reconnectTask?.cancel()
         _ = try await self.reconnectTask?.value
+
+        // Cancel all pending ping commands to avoid leaked promises
+        for rttCommand in self.pingQueue.drain() {
+            rttCommand.cancel()
+        }
 
         // Handle case where channel is already nil (e.g., during rapid reconnections)
         guard let eventLoop = self.channel?.eventLoop else {
