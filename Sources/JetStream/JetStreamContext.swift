@@ -127,7 +127,7 @@ extension JetStreamContext {
 }
 
 public struct JetStreamAPIResponse: Codable {
-    public let type: String
+    public let type: String?
     public let error: JetStreamError.APIError
 }
 
@@ -202,25 +202,28 @@ public struct Ack: Codable {
     public let domain: String?
     public let duplicate: Bool
 
-    // Custom CodingKeys to map JSON keys to Swift property names
-    enum CodingKeys: String, CodingKey {
-        case stream
-        case seq
-        case domain
-        case duplicate
+    private enum CodingKeys: String, CodingKey {
+        case stream, seq, domain, duplicate
     }
 
-    // Custom initializer from Decoder
+    private enum DecodingKeys: String, CodingKey {
+        case stream, seq, domain, duplicate, error
+    }
+
     public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        // Decode `stream` and `seq` as they are required
+        let container = try decoder.container(keyedBy: DecodingKeys.self)
+
+        // Check error first (matching Go/Python/Rust clients)
+        if container.contains(.error) {
+            throw DecodingError.dataCorruptedError(
+                forKey: .error, in: container,
+                debugDescription: "Response contains error"
+            )
+        }
+
         stream = try container.decode(String.self, forKey: .stream)
         seq = try container.decode(UInt64.self, forKey: .seq)
-
-        // Decode `domain` as optional since it may not be present
         domain = try container.decodeIfPresent(String.self, forKey: .domain)
-
-        // Decode `duplicate` and provide a default value of `false` if not present
         duplicate = try container.decodeIfPresent(Bool.self, forKey: .duplicate) ?? false
     }
 }
