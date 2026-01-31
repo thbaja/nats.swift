@@ -777,6 +777,7 @@ final class ConnectionHandler: ChannelInboundHandler, Sendable {
         guard let eventLoop = self.channel?.eventLoop else {
             self.state.withLockedValue { $0 = .closed }
             self.pingTask?.cancel()
+            resumePendingContinuations()
             self.fire(.closed)
             return
         }
@@ -795,7 +796,30 @@ final class ConnectionHandler: ChannelInboundHandler, Sendable {
             // as that would mean we would get an error closing client during reconnect
         }
 
+        // Resume any pending continuations that weren't handled by channelInactive
+        // (can happen during abrupt socket death, e.g., system sleep)
+        resumePendingContinuations()
+
         self.fire(.closed)
+    }
+
+    /// Resume pending connection continuations to avoid leaks.
+    /// Safe to call multiple times - atomic access ensures only first caller resumes.
+    private func resumePendingContinuations() {
+        if let continuation = serverInfoContinuation.withLockedValue({ cont in
+            let toResume = cont
+            cont = nil
+            return toResume
+        }) {
+            continuation.resume(throwing: NatsError.ClientError.connectionClosed)
+        }
+        if let continuation = connectionEstablishedContinuation.withLockedValue({ cont in
+            let toResume = cont
+            cont = nil
+            return toResume
+        }) {
+            continuation.resume(throwing: NatsError.ClientError.connectionClosed)
+        }
     }
 
     private func disconnect() async throws {
